@@ -15,7 +15,7 @@ help:
 
 build:
 	@echo "Compilando aplicação..."
-	go build -o bin/dtc ./cmd/servidor
+	go build -o bin/dtc ./cmd/server 
 
 run: build
 	@echo "Executando aplicação..."
