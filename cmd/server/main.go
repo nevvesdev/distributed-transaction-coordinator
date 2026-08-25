@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	infraredis "github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/cache/redis"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/config"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/persistence/mysql"
 )
@@ -26,5 +27,13 @@ func main() {
 		log.Fatalf("erro ao executar migrações: %v", err)
 	}
 
-	fmt.Printf("servidor pronto na porta %s\n", cfg.Servidor.Porta)
+	redisCliente, err := infraredis.NovaConexao(cfg.Redis)
+	if err != nil {
+		log.Fatalf("erro ao conectar ao Redis: %v", err)
+	}
+	defer redisCliente.Close()
+
+	fmt.Printf("✅ MySQL conectado\n")
+	fmt.Printf("✅ Redis conectado\n")
+	fmt.Printf("✅ servidor pronto na porta %s\n", cfg.Servidor.Porta)
 }
