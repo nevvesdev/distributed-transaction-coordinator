@@ -1,0 +1,25 @@
+# Binários
+bin/
+*.exe
+*.out
+
+# Ambiente
+.env
+
+# Dependências Go
+vendor/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Logs
+*.log
+
+# Cobertura de testes
+coverage.out
+coverage.html
+
+# OS
+.DS_Store
+Thumbs.db
