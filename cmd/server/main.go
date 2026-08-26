@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/application/service"
-	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/cache/idempotency"
+	infraidempotency "github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/cache/idempotency"
 	infraredis "github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/cache/redis"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/config"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/persistence/eventstore"
@@ -41,11 +41,12 @@ func main() {
 	// repositórios
 	repoTransacao := mysql.NovoRepositorioTransacao(db)
 	repoParticipante := mysql.NovoRepositorioParticipante(db)
+	repoSaga := mysql.NovoRepositorioSaga(db)
 
-	// infraestrutura
+	// infraestrutura compartilhada
 	eventoStore := eventstore.NovoMySQLEventStore(db)
 	lockDistribuido := infraredis.NovoRedisLock(redisCliente)
-	_ = idempotency.NovoRedisIdempotencyStore(redisCliente)
+	_ = infraidempotency.NovoRedisIdempotencyStore(redisCliente)
 
 	// application services
 	coordinador := service.NovoCoordinador2PC(
@@ -56,6 +57,13 @@ func main() {
 		cfg.Transacao.TimeoutPrepare,
 	)
 
+	orquestrador := service.NovoOrchestradorSaga(
+		repoSaga,
+		eventoStore,
+		lockDistribuido,
+	)
+	_ = orquestrador
+
 	// monitor de timeout em background
 	monitor := service.NovoMonitorTimeout(repoTransacao, coordinador, 10*time.Second)
 	monitor.Iniciar(context.Background())
@@ -63,6 +71,7 @@ func main() {
 	fmt.Println("✅ MySQL conectado")
 	fmt.Println("✅ Redis conectado")
 	fmt.Println("✅ Coordinador 2PC pronto")
+	fmt.Println("✅ Orquestrador Saga pronto")
 	fmt.Println("✅ Monitor de timeout ativo")
 	fmt.Printf("✅ servidor pronto na porta %s\n", cfg.Servidor.Porta)
 }

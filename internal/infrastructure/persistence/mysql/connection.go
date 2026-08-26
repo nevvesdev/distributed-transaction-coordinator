@@ -42,6 +42,8 @@ func ExecutarMigracoes(db *sql.DB) error {
 		migracaoTransacoes,
 		migracaoParticipantes,
 		migracaoEventos,
+		migracaoSagas,
+		migracaoSagaSteps,
 	}
 
 	for _, migracao := range migracoes {
@@ -113,3 +115,44 @@ CREATE TABLE IF NOT EXISTS eventos_dominio (
 func formatarTempo(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04:05.000000")
 }
+
+// migracaoSagas contém o DDL da tabela de sagas.
+const migracaoSagas = `
+CREATE TABLE IF NOT EXISTS sagas (
+    id            VARCHAR(36)  NOT NULL,
+    id_transacao  VARCHAR(36)  NOT NULL,
+    nome          VARCHAR(100) NOT NULL,
+    status        VARCHAR(20)  NOT NULL,
+    step_atual    INT          NOT NULL DEFAULT 0,
+    criado_em     DATETIME(6)  NOT NULL,
+    atualizado_em DATETIME(6)  NOT NULL,
+
+    CONSTRAINT pk_sagas PRIMARY KEY (id),
+    CONSTRAINT uq_sagas_id_transacao UNIQUE (id_transacao),
+    INDEX idx_sagas_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+`
+
+// migracaoSagaSteps contém o DDL da tabela de steps da saga.
+const migracaoSagaSteps = `
+CREATE TABLE IF NOT EXISTS saga_steps (
+    id               VARCHAR(36)  NOT NULL,
+    id_saga          VARCHAR(36)  NOT NULL,
+    nome             VARCHAR(100) NOT NULL,
+    ordem            INT          NOT NULL,
+    endpoint         VARCHAR(500) NOT NULL,
+    endpoint_compen  VARCHAR(500) NOT NULL,
+    status           VARCHAR(20)  NOT NULL,
+    tentativas       INT          NOT NULL DEFAULT 0,
+    ultimo_erro      TEXT             NULL,
+    iniciado_em      DATETIME(6)      NULL,
+    concluido_em     DATETIME(6)      NULL,
+
+    CONSTRAINT pk_saga_steps PRIMARY KEY (id),
+    CONSTRAINT fk_saga_steps_saga
+        FOREIGN KEY (id_saga) REFERENCES sagas(id)
+        ON DELETE CASCADE,
+    INDEX idx_saga_steps_id_saga (id_saga),
+    INDEX idx_saga_steps_ordem (ordem)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+`
