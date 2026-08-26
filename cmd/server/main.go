@@ -42,6 +42,7 @@ func main() {
 	repoTransacao := mysql.NovoRepositorioTransacao(db)
 	repoParticipante := mysql.NovoRepositorioParticipante(db)
 	repoSaga := mysql.NovoRepositorioSaga(db)
+	repoDLQ := mysql.NovoRepositorioDLQ(db)
 
 	// infraestrutura compartilhada
 	eventoStore := eventstore.NovoMySQLEventStore(db)
@@ -62,16 +63,27 @@ func main() {
 		eventoStore,
 		lockDistribuido,
 	)
-	_ = orquestrador
 
-	// monitor de timeout em background
+	workerDLQ := service.NovoWorkerDLQ(
+		repoDLQ,
+		coordinador,
+		orquestrador,
+		15*time.Second,
+		cfg.Transacao.IntervaloBaseRetry,
+		cfg.Transacao.MaxTentativasDLQ,
+	)
+
+	// workers em background
+	ctx := context.Background()
 	monitor := service.NovoMonitorTimeout(repoTransacao, coordinador, 10*time.Second)
-	monitor.Iniciar(context.Background())
+	monitor.Iniciar(ctx)
+	workerDLQ.Iniciar(ctx)
 
 	fmt.Println("✅ MySQL conectado")
 	fmt.Println("✅ Redis conectado")
 	fmt.Println("✅ Coordinador 2PC pronto")
 	fmt.Println("✅ Orquestrador Saga pronto")
 	fmt.Println("✅ Monitor de timeout ativo")
+	fmt.Println("✅ Worker DLQ ativo")
 	fmt.Printf("✅ servidor pronto na porta %s\n", cfg.Servidor.Porta)
 }
