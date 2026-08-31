@@ -329,3 +329,13 @@ func (c *Coordinador2PC) enviarRollback(ctx context.Context, endpoint, idTransac
 	case <-time.After(50 * time.Millisecond):
 	}
 }
+
+// BuscarTransacao retorna uma transação pelo ID para uso nos handlers HTTP.
+func (c *Coordinador2PC) BuscarTransacao(ctx context.Context, id string) (*transaction.Transaction, error) {
+	return c.repoTransacao.BuscarPorID(ctx, id)
+}
+
+// ListarParticipantes retorna todos os participantes de uma transação.
+func (c *Coordinador2PC) ListarParticipantes(ctx context.Context, idTransacao string) ([]*participant.Participant, error) {
+	return c.repoParticipante.ListarPorTransacao(ctx, idTransacao)
+}

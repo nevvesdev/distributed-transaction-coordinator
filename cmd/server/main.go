@@ -4,12 +4,17 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/application/service"
 	infraidempotency "github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/cache/idempotency"
 	infraredis "github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/cache/redis"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/config"
+	infrahttp "github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/http"
+	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/http/handler"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/persistence/eventstore"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/persistence/mysql"
 )
@@ -22,6 +27,7 @@ func main() {
 		log.Fatalf("erro ao carregar configurações: %v", err)
 	}
 
+	// infraestrutura de dados
 	db, err := mysql.NovaConexao(cfg.MySQL)
 	if err != nil {
 		log.Fatalf("erro ao conectar ao MySQL: %v", err)
@@ -47,7 +53,7 @@ func main() {
 	// infraestrutura compartilhada
 	eventoStore := eventstore.NovoMySQLEventStore(db)
 	lockDistribuido := infraredis.NovoRedisLock(redisCliente)
-	_ = infraidempotency.NovoRedisIdempotencyStore(redisCliente)
+	idemStore := infraidempotency.NovoRedisIdempotencyStore(redisCliente)
 
 	// application services
 	coordinador := service.NovoCoordinador2PC(
@@ -74,10 +80,29 @@ func main() {
 	)
 
 	// workers em background
-	ctx := context.Background()
-	monitor := service.NovoMonitorTimeout(repoTransacao, coordinador, 10*time.Second)
-	monitor.Iniciar(ctx)
+	ctx, cancelar := context.WithCancel(context.Background())
+	defer cancelar()
+
+	service.NovoMonitorTimeout(repoTransacao, coordinador, 10*time.Second).Iniciar(ctx)
 	workerDLQ.Iniciar(ctx)
+
+	// handlers HTTP
+	transacaoHandler := handler.NovoTransacaoHandler(coordinador)
+	participanteHandler := handler.NovoParticipanteHandler(coordinador)
+	sagaHandler := handler.NovoSagaHandler(orquestrador)
+	dlqHandler := handler.NovoDLQHandler(workerDLQ)
+
+	// roteador e servidor
+	router := infrahttp.ConfigurarRotas(
+		transacaoHandler,
+		participanteHandler,
+		sagaHandler,
+		dlqHandler,
+		idemStore,
+	)
+
+	servidor := infrahttp.NovoServidor(cfg.Servidor, router)
+	servidor.Iniciar()
 
 	fmt.Println("✅ MySQL conectado")
 	fmt.Println("✅ Redis conectado")
@@ -85,5 +110,22 @@ func main() {
 	fmt.Println("✅ Orquestrador Saga pronto")
 	fmt.Println("✅ Monitor de timeout ativo")
 	fmt.Println("✅ Worker DLQ ativo")
-	fmt.Printf("✅ servidor pronto na porta %s\n", cfg.Servidor.Porta)
+	fmt.Printf("✅ servidor HTTP na porta %s\n", cfg.Servidor.Porta)
+
+	// aguarda sinal de encerramento gracioso
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("sinal de encerramento recebido...")
+	cancelar()
+
+	ctxDesligar, cancelarDesligar := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelarDesligar()
+
+	if err := servidor.Desligar(ctxDesligar); err != nil {
+		log.Fatalf("erro ao encerrar servidor: %v", err)
+	}
+
+	log.Println("servidor encerrado com sucesso")
 }
