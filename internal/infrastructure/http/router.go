@@ -16,6 +16,7 @@ func ConfigurarRotas(
 	participanteHandler *handler.ParticipanteHandler,
 	sagaHandler *handler.SagaHandler,
 	dlqHandler *handler.DLQHandler,
+	auditHandler *handler.AuditHandler,
 	idemStore idempotency.Store,
 ) *chi.Mux {
 	r := chi.NewRouter()
@@ -52,6 +53,14 @@ func ConfigurarRotas(
 	r.Route("/dlq", func(r chi.Router) {
 		r.Post("/", dlqHandler.Enfileirar)
 		r.Get("/{id_referencia}", dlqHandler.ListarPorReferencia)
+	})
+
+	// rotas de auditoria e event sourcing
+	r.Route("/audit", func(r chi.Router) {
+		r.Get("/{id_agregado}", auditHandler.AuditTrail)
+		r.Get("/transacoes/{id}", auditHandler.DetalheTransacao)
+		r.Get("/transacoes/{id}/projecao", auditHandler.ProjecaoTransacao)
+		r.Get("/transacoes/{id}/participantes", auditHandler.ParticipantesTransacao)
 	})
 
 	return r

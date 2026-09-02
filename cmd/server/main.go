@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nevvesdev/distributed-transaction-coordinator/internal/application/query"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/application/service"
 	infraidempotency "github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/cache/idempotency"
 	infraredis "github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/cache/redis"
@@ -79,6 +80,13 @@ func main() {
 		cfg.Transacao.MaxTentativasDLQ,
 	)
 
+	// query handler — lado de leitura do CQRS
+	handlerConsulta := query.NovoHandlerConsulta(
+		repoTransacao,
+		repoParticipante,
+		eventoStore,
+	)
+
 	// workers em background
 	ctx, cancelar := context.WithCancel(context.Background())
 	defer cancelar()
@@ -91,6 +99,7 @@ func main() {
 	participanteHandler := handler.NovoParticipanteHandler(coordinador)
 	sagaHandler := handler.NovoSagaHandler(orquestrador)
 	dlqHandler := handler.NovoDLQHandler(workerDLQ)
+	auditHandler := handler.NovoAuditHandler(handlerConsulta)
 
 	// roteador e servidor
 	router := infrahttp.ConfigurarRotas(
@@ -98,6 +107,7 @@ func main() {
 		participanteHandler,
 		sagaHandler,
 		dlqHandler,
+		auditHandler,
 		idemStore,
 	)
 
@@ -110,9 +120,10 @@ func main() {
 	fmt.Println("✅ Orquestrador Saga pronto")
 	fmt.Println("✅ Monitor de timeout ativo")
 	fmt.Println("✅ Worker DLQ ativo")
+	fmt.Println("✅ Event Sourcing e Audit Trail prontos")
 	fmt.Printf("✅ servidor HTTP na porta %s\n", cfg.Servidor.Porta)
 
-	// aguarda sinal de encerramento gracioso
+	// graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
