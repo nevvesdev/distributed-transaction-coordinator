@@ -16,6 +16,7 @@ import (
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/config"
 	infrahttp "github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/http"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/http/handler"
+	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/observability"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/persistence/eventstore"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/persistence/mysql"
 )
@@ -55,6 +56,7 @@ func main() {
 	eventoStore := eventstore.NovoMySQLEventStore(db)
 	lockDistribuido := infraredis.NovoRedisLock(redisCliente)
 	idemStore := infraidempotency.NovoRedisIdempotencyStore(redisCliente)
+	metricas := observability.NovasMetricas()
 
 	// application services
 	coordinador := service.NovoCoordinador2PC(
@@ -100,6 +102,7 @@ func main() {
 	sagaHandler := handler.NovoSagaHandler(orquestrador)
 	dlqHandler := handler.NovoDLQHandler(workerDLQ)
 	auditHandler := handler.NovoAuditHandler(handlerConsulta)
+	healthHandler := handler.NovoHealthHandler(db, redisCliente)
 
 	// roteador e servidor
 	router := infrahttp.ConfigurarRotas(
@@ -108,7 +111,9 @@ func main() {
 		sagaHandler,
 		dlqHandler,
 		auditHandler,
+		healthHandler,
 		idemStore,
+		metricas,
 	)
 
 	servidor := infrahttp.NovoServidor(cfg.Servidor, router)
@@ -121,6 +126,7 @@ func main() {
 	fmt.Println("✅ Monitor de timeout ativo")
 	fmt.Println("✅ Worker DLQ ativo")
 	fmt.Println("✅ Event Sourcing e Audit Trail prontos")
+	fmt.Println("✅ Métricas Prometheus em /metrics")
 	fmt.Printf("✅ servidor HTTP na porta %s\n", cfg.Servidor.Porta)
 
 	// graceful shutdown

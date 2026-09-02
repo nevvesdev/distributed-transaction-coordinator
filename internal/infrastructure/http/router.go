@@ -1,12 +1,11 @@
 package http
 
 import (
-	"net/http"
-
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/http/handler"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/http/middleware"
+	"github.com/nevvesdev/distributed-transaction-coordinator/internal/infrastructure/observability"
 	"github.com/nevvesdev/distributed-transaction-coordinator/internal/shared/idempotency"
 )
 
@@ -17,7 +16,9 @@ func ConfigurarRotas(
 	sagaHandler *handler.SagaHandler,
 	dlqHandler *handler.DLQHandler,
 	auditHandler *handler.AuditHandler,
+	healthHandler *handler.HealthHandler,
 	idemStore idempotency.Store,
+	metricas *observability.Metricas,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -25,12 +26,14 @@ func ConfigurarRotas(
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.Recuperacao)
 	r.Use(middleware.Logging)
+	r.Use(middleware.Metricas(metricas))
 	r.Use(middleware.Idempotencia(idemStore))
 
-	// health check
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		handler.ResponderJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
+	// health check detalhado
+	r.Get("/health", healthHandler.Verificar)
+
+	// métricas Prometheus
+	r.Handle("/metrics", observability.Handler())
 
 	// rotas de transações 2PC
 	r.Route("/transacoes", func(r chi.Router) {
